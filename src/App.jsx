@@ -13,6 +13,7 @@ function App() {
     devices,
     group,
     faces,
+    faceRecords,
     allDevices,
     screenError,
     records,
@@ -24,6 +25,7 @@ function App() {
     sendJumpToDevice,
     sendQueryRecord,
     clearRecordQuery,
+    clearFaceRecords,
   } = useMqtt()
   const [autoSwitchInterval, setAutoSwitchInterval] = useState(0)
   const [detailDevice, setDetailDevice] = useState(null)
@@ -37,6 +39,7 @@ function App() {
     (device) => {
       if (!device?.name) return
       setDetailDevice(device)
+      clearFaceRecords(device.name)
       if (detailTimerRef.current) {
         clearInterval(detailTimerRef.current)
         detailTimerRef.current = null
@@ -46,7 +49,7 @@ function App() {
         setAiActive(sendDetail(device.name, true))
       }, DETAIL_CONFIG.keepAliveInterval)
     },
-    [sendDetail],
+    [sendDetail, clearFaceRecords],
   )
 
   const closeDetail = useCallback(() => {
@@ -149,6 +152,7 @@ function App() {
         <DetailModal
           device={detailDevice}
           faces={faces?.[detailDevice.name]}
+          faceRecords={faceRecords[detailDevice.name] || []}
           aiActive={aiActive}
           onClose={closeDetail}
         />

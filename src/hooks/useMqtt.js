@@ -6,6 +6,18 @@ const { brokerURL: STOMP_URL, credentials, reconnectDelay, heartbeatIncoming, he
 const { SWITCH: SWITCH_TOPIC, SWITCH_RETURN: RETURN_TOPIC, FACE: FACE_TOPIC, QUERY_RECORD: QUERY_RECORD_TOPIC, QUERY_RECORD_RETURN: QUERY_RECORD_RETURN_TOPIC } = MQTT_TOPICS
 const RECORD_QUERY_TIMEOUT = TIMEOUT_CONFIG.RECORD_QUERY
 
+function toDataUri(photo) {
+  if (!photo) return ''
+  if (photo.startsWith('data:')) return photo
+  if (photo.startsWith('http://') || photo.startsWith('https://')) return photo
+  const clean = photo.replace(/\s+/g, '')
+  let mime = 'image/jpeg'
+  if (clean.startsWith('iVBOR')) mime = 'image/png'
+  else if (clean.startsWith('R0lGOD')) mime = 'image/gif'
+  else if (clean.startsWith('UklGR')) mime = 'image/webp'
+  return `data:${mime};base64,${clean}`
+}
+
 function normalizeDevices(raw) {
   if (Array.isArray(raw)) {
     return raw
@@ -27,6 +39,7 @@ export function useMqtt() {
   const [group, setGroup] = useState(0)
   const [lastMessage, setLastMessage] = useState(null)
   const [faces, setFaces] = useState({})
+  const [faceRecords, setFaceRecords] = useState({})
   const [allDevices, setAllDevices] = useState([])
   const [screenError, setScreenError] = useState('')
   const [records, setRecords] = useState({})
@@ -89,6 +102,36 @@ export function useMqtt() {
                 ...prev,
                 [data.device]: Array.isArray(data.faces) ? data.faces : [],
               }))
+              const device = data.device
+              const seen = new Set()
+              const batch = []
+              for (const f of Array.isArray(data.faces) ? data.faces : []) {
+                if (!f || f.known !== true) continue
+                const key = f.id != null ? `id:${f.id}` : f.name ? `name:${f.name}` : ''
+                if (!key || seen.has(key)) continue
+                seen.add(key)
+                batch.push({
+                  key,
+                  id: f.id,
+                  name: f.name || '',
+                  photo: toDataUri(f.photo),
+                  time: new Date().toLocaleTimeString('zh-CN', {
+                    hour12: false,
+                  }),
+                })
+              }
+              if (batch.length) {
+                setFaceRecords((prev) => {
+                  const cur = prev[device] || []
+                  const result = [...cur]
+                  for (const item of batch) {
+                    const last = result.length ? result[result.length - 1] : null
+                    if (last && item.key === last.key) continue
+                    result.push(item)
+                  }
+                  return { ...prev, [device]: result }
+                })
+              }
             }
           } catch (e) {
             console.error('face message parse error:', e)
@@ -305,12 +348,23 @@ export function useMqtt() {
     callbacksRef.current.onMessage = cb
   }, [])
 
+  const clearFaceRecords = useCallback((device) => {
+    setFaceRecords((prev) => {
+      if (device == null) return {}
+      if (!prev[device]) return prev
+      const next = { ...prev }
+      delete next[device]
+      return next
+    })
+  }, [])
+
   return {
     status,
     devices,
     group,
     lastMessage,
     faces,
+    faceRecords,
     allDevices,
     screenError,
     records,
@@ -322,6 +376,7 @@ export function useMqtt() {
     sendJumpToDevice,
     sendQueryRecord,
     clearRecordQuery,
+    clearFaceRecords,
     onMessage,
   }
 }
