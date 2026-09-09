@@ -1,8 +1,9 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { useMediaMTXWebRTC } from 'mediamtx-webrtc-react'
 import FaceOverlay from './FaceOverlay'
+import { VIDEO_CONFIG } from '../config'
 
-const VIDEO_BASE = 'http://localhost:8889'
+const { getWHEPUrl } = VIDEO_CONFIG
 
 function fitBox(ar) {
   const availW = Math.max(320, window.innerWidth - 64)
@@ -16,9 +17,9 @@ function fitBox(ar) {
   return { width: Math.round(w), height: Math.round(h) }
 }
 
-export default function DetailModal({ device, faces, onClose }) {
+export default function DetailModal({ device, faces, aiActive, onClose }) {
   const { videoRef, isConnected } = useMediaMTXWebRTC({
-    url: `${VIDEO_BASE}/${device.name}/whep`,
+    url: getWHEPUrl(device.name),
   })
   const arRef = useRef(16 / 9)
   const [box, setBox] = useState(() => fitBox(16 / 9))
@@ -65,6 +66,11 @@ export default function DetailModal({ device, faces, onClose }) {
           <button className="detail-close" onClick={onClose} title="关闭">
             &times;
           </button>
+
+          <div className={`ai-badge ${aiActive ? 'on' : 'off'}`}>
+            <i />
+            {aiActive ? 'AI识别已启动' : 'AI识别已停止'}
+          </div>
 
           <div className="detail-preview-pill">
             <span className="dpp-label">

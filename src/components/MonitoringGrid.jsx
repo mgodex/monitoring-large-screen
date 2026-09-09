@@ -1,12 +1,13 @@
 import { memo } from 'react'
 import { useMediaMTXWebRTC } from 'mediamtx-webrtc-react'
 import FaceOverlay from './FaceOverlay'
+import { VIDEO_CONFIG } from '../config'
 
-const VIDEO_BASE = 'http://localhost:8889'
+const { getWHEPUrl } = VIDEO_CONFIG
 
 const WebRTCCell = memo(function WebRTCCell({ device, index, faces, onDetail }) {
   const { videoRef, isConnected } = useMediaMTXWebRTC({
-    url: `${VIDEO_BASE}/${device.name}/whep`,
+    url: getWHEPUrl(device.name),
   })
 
   return (

@@ -1,13 +1,10 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { Client } from '@stomp/stompjs'
+import { MQTT_CONFIG, MQTT_TOPICS, TIMEOUT_CONFIG } from '../config'
 
-const STOMP_URL = 'ws://127.0.0.1:15674/ws'
-const SWITCH_TOPIC = '/topic/.switchScreen'
-const RETURN_TOPIC = '/topic/.switchScreenReturn'
-const FACE_TOPIC = '/topic/.faceInfo'
-const QUERY_RECORD_TOPIC = '/topic/.queryRecord'
-const QUERY_RECORD_RETURN_TOPIC = '/topic/.queryRecordReturn'
-const RECORD_QUERY_TIMEOUT = 10000
+const { brokerURL: STOMP_URL, credentials, reconnectDelay, heartbeatIncoming, heartbeatOutgoing } = MQTT_CONFIG
+const { SWITCH: SWITCH_TOPIC, SWITCH_RETURN: RETURN_TOPIC, FACE: FACE_TOPIC, QUERY_RECORD: QUERY_RECORD_TOPIC, QUERY_RECORD_RETURN: QUERY_RECORD_RETURN_TOPIC } = MQTT_TOPICS
+const RECORD_QUERY_TIMEOUT = TIMEOUT_CONFIG.RECORD_QUERY
 
 function normalizeDevices(raw) {
   if (Array.isArray(raw)) {
@@ -43,13 +40,10 @@ export function useMqtt() {
   useEffect(() => {
     const client = new Client({
       brokerURL: STOMP_URL,
-      connectHeaders: {
-        login: 'meng',
-        passcode: '123456',
-      },
-      reconnectDelay: 5000,
-      heartbeatIncoming: 4000,
-      heartbeatOutgoing: 4000,
+      connectHeaders: credentials,
+      reconnectDelay,
+      heartbeatIncoming,
+      heartbeatOutgoing,
       onConnect: () => {
         console.log('[MQTT] STOMP connected')
         setStatus('connected')

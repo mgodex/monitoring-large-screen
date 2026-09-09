@@ -4,6 +4,7 @@ import SettingsPanel from './components/SettingsPanel'
 import DetailModal from './components/DetailModal'
 import PlaybackModal from './components/PlaybackModal'
 import { useMqtt } from './hooks/useMqtt'
+import { DETAIL_CONFIG } from './config'
 import './App.css'
 
 function App() {
@@ -26,23 +27,37 @@ function App() {
   } = useMqtt()
   const [autoSwitchInterval, setAutoSwitchInterval] = useState(0)
   const [detailDevice, setDetailDevice] = useState(null)
+  const [aiActive, setAiActive] = useState(false)
   const [playbackDevice, setPlaybackDevice] = useState(null)
   const timerRef = useRef(null)
+  const detailTimerRef = useRef(null)
   const bootRef = useRef(false)
 
   const openDetail = useCallback(
     (device) => {
       if (!device?.name) return
       setDetailDevice(device)
-      sendDetail(device.name, true)
+      if (detailTimerRef.current) {
+        clearInterval(detailTimerRef.current)
+        detailTimerRef.current = null
+      }
+      setAiActive(sendDetail(device.name, true))
+      detailTimerRef.current = setInterval(() => {
+        setAiActive(sendDetail(device.name, true))
+      }, DETAIL_CONFIG.keepAliveInterval)
     },
     [sendDetail],
   )
 
   const closeDetail = useCallback(() => {
+    if (detailTimerRef.current) {
+      clearInterval(detailTimerRef.current)
+      detailTimerRef.current = null
+    }
     if (detailDevice) {
       sendDetail(detailDevice.name, false)
     }
+    setAiActive(false)
     setDetailDevice(null)
   }, [detailDevice, sendDetail])
 
@@ -131,7 +146,12 @@ function App() {
       </main>
 
       {detailDevice && (
-        <DetailModal device={detailDevice} faces={faces?.[detailDevice.name]} onClose={closeDetail} />
+        <DetailModal
+          device={detailDevice}
+          faces={faces?.[detailDevice.name]}
+          aiActive={aiActive}
+          onClose={closeDetail}
+        />
       )}
 
       {playbackDevice && (
