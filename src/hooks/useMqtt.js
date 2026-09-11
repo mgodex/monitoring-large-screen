@@ -40,6 +40,7 @@ export function useMqtt() {
   const [lastMessage, setLastMessage] = useState(null)
   const [faces, setFaces] = useState({})
   const [faceRecords, setFaceRecords] = useState({})
+  const [faceCaptures, setFaceCaptures] = useState([])
   const [allDevices, setAllDevices] = useState([])
   const [screenError, setScreenError] = useState('')
   const [records, setRecords] = useState({})
@@ -123,15 +124,34 @@ export function useMqtt() {
               if (batch.length) {
                 setFaceRecords((prev) => {
                   const cur = prev[device] || []
-                  const result = [...cur]
+                  let result = [...cur]
                   for (const item of batch) {
-                    const last = result.length ? result[result.length - 1] : null
-                    if (last && item.key === last.key) continue
-                    result.push(item)
+                    const first = result.length ? result[0] : null
+                    if (first && item.key === first.key) continue
+                    result = [item, ...result]
                   }
                   return { ...prev, [device]: result }
                 })
               }
+            }
+            if (data.cmd === 'faceCapture') {
+              setFaceCaptures((prev) =>
+                [
+                  {
+                    device: data.device || '',
+                    score: data.score,
+                    frontal: data.frontal,
+                    sharpness: data.sharpness,
+                    size: data.size,
+                    det: data.det,
+                    photo: toDataUri(data.photo),
+                    time:
+                      data.time ||
+                      new Date().toLocaleString('zh-CN', { hour12: false }),
+                  },
+                  ...prev,
+                ].slice(0, 100),
+              )
             }
           } catch (e) {
             console.error('face message parse error:', e)
@@ -358,6 +378,28 @@ export function useMqtt() {
     })
   }, [])
 
+  const sendFaceCapture = useCallback((run) => {
+    const client = clientRef.current
+    if (client && client.connected) {
+      const payload = JSON.stringify({
+        cmd: run ? 'faceCaptureStart' : 'faceCaptureStop',
+      })
+      console.log('[MQTT] sending:', payload, 'to', FACE_TOPIC)
+      client.publish({
+        destination: FACE_TOPIC,
+        body: payload,
+        headers: { 'content-type': 'application/json' },
+      })
+      return true
+    }
+    console.warn('[MQTT] sendFaceCapture failed - client not ready')
+    return false
+  }, [])
+
+  const clearFaceCaptures = useCallback(() => {
+    setFaceCaptures([])
+  }, [])
+
   return {
     status,
     devices,
@@ -365,6 +407,7 @@ export function useMqtt() {
     lastMessage,
     faces,
     faceRecords,
+    faceCaptures,
     allDevices,
     screenError,
     records,
@@ -375,8 +418,10 @@ export function useMqtt() {
     sendGetAllDevice,
     sendJumpToDevice,
     sendQueryRecord,
+    sendFaceCapture,
     clearRecordQuery,
     clearFaceRecords,
+    clearFaceCaptures,
     onMessage,
   }
 }

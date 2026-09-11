@@ -3,6 +3,7 @@ import MonitoringGrid from './components/MonitoringGrid'
 import SettingsPanel from './components/SettingsPanel'
 import DetailModal from './components/DetailModal'
 import PlaybackModal from './components/PlaybackModal'
+import FaceCaptureModal from './components/FaceCaptureModal'
 import { useMqtt } from './hooks/useMqtt'
 import { DETAIL_CONFIG } from './config'
 import './App.css'
@@ -14,6 +15,7 @@ function App() {
     group,
     faces,
     faceRecords,
+    faceCaptures,
     allDevices,
     screenError,
     records,
@@ -24,13 +26,16 @@ function App() {
     sendGetAllDevice,
     sendJumpToDevice,
     sendQueryRecord,
+    sendFaceCapture,
     clearRecordQuery,
     clearFaceRecords,
+    clearFaceCaptures,
   } = useMqtt()
   const [autoSwitchInterval, setAutoSwitchInterval] = useState(0)
   const [detailDevice, setDetailDevice] = useState(null)
   const [aiActive, setAiActive] = useState(false)
   const [playbackDevice, setPlaybackDevice] = useState(null)
+  const [faceCaptureOpen, setFaceCaptureOpen] = useState(false)
   const timerRef = useRef(null)
   const detailTimerRef = useRef(null)
   const bootRef = useRef(false)
@@ -103,6 +108,18 @@ function App() {
     }
   }, [status, sendGetAllDevice])
 
+  useEffect(() => {
+    if (!faceCaptureOpen) return
+    sendFaceCapture(true)
+    const timer = setInterval(() => {
+      sendFaceCapture(true)
+    }, 5000)
+    return () => {
+      clearInterval(timer)
+      sendFaceCapture(false)
+    }
+  }, [faceCaptureOpen, sendFaceCapture])
+
   const jumpToDevice = useCallback(
     (name) => {
       if (name) sendJumpToDevice(name)
@@ -136,6 +153,15 @@ function App() {
       <header className="app-header">
         <h1>监控大屏</h1>
         <div className="header-info">
+          <button
+            className="face-capture-btn"
+            onClick={() => {
+              clearFaceCaptures()
+              setFaceCaptureOpen(true)
+            }}
+          >
+            抓脸
+          </button>
           <span className="header-status">
             当前为第 <em>{group}</em> 组
             <i className="hs-sep" />
@@ -166,6 +192,14 @@ function App() {
           busy={recordBusy}
           onQuery={queryRecords}
           onClose={closePlayback}
+        />
+      )}
+
+      {faceCaptureOpen && (
+        <FaceCaptureModal
+          captures={faceCaptures}
+          onClear={clearFaceCaptures}
+          onClose={() => setFaceCaptureOpen(false)}
         />
       )}
 
