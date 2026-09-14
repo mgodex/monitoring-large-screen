@@ -3,8 +3,9 @@ import { Client } from '@stomp/stompjs'
 import { MQTT_CONFIG, MQTT_TOPICS, TIMEOUT_CONFIG } from '../config'
 
 const { brokerURL: STOMP_URL, credentials, reconnectDelay, heartbeatIncoming, heartbeatOutgoing } = MQTT_CONFIG
-const { SWITCH: SWITCH_TOPIC, SWITCH_RETURN: RETURN_TOPIC, FACE: FACE_TOPIC, QUERY_RECORD: QUERY_RECORD_TOPIC, QUERY_RECORD_RETURN: QUERY_RECORD_RETURN_TOPIC } = MQTT_TOPICS
-const RECORD_QUERY_TIMEOUT = TIMEOUT_CONFIG.RECORD_QUERY
+const { SWITCH: SWITCH_TOPIC, SWITCH_RETURN: RETURN_TOPIC, FACE: FACE_TOPIC, FACE_CAPTURE: FACE_CAPTURE_TOPIC, QUERY_RECORD: QUERY_RECORD_TOPIC, QUERY_RECORD_RETURN: QUERY_RECORD_RETURN_TOPIC } = MQTT_TOPICS
+const { RECORD_QUERY: RECORD_QUERY_TIMEOUT, VIDEO_FACE_DETECT: VIDEO_FACE_DETECT_TIMEOUT } =
+  TIMEOUT_CONFIG
 
 function toDataUri(photo) {
   if (!photo) return ''
@@ -16,6 +17,19 @@ function toDataUri(photo) {
   else if (clean.startsWith('R0lGOD')) mime = 'image/gif'
   else if (clean.startsWith('UklGR')) mime = 'image/webp'
   return `data:${mime};base64,${clean}`
+}
+
+function toArray(v) {
+  if (Array.isArray(v)) return v
+  if (typeof v === 'string') {
+    try {
+      const parsed = JSON.parse(v)
+      if (Array.isArray(parsed)) return parsed
+    } catch {
+      // ignore
+    }
+  }
+  return []
 }
 
 function normalizeDevices(raw) {
@@ -50,6 +64,7 @@ export function useMqtt() {
   const callbacksRef = useRef({})
   const firstSwitchRef = useRef(true)
   const recordTimerRef = useRef(null)
+  const videoFacePendingRef = useRef(new Map())
 
   useEffect(() => {
     const client = new Client({
@@ -133,6 +148,60 @@ export function useMqtt() {
                   return { ...prev, [device]: result }
                 })
               }
+            }
+          } catch (e) {
+            console.error('face message parse error:', e)
+          }
+        })
+        client.subscribe(FACE_CAPTURE_TOPIC, (message) => {
+          try {
+            const data = JSON.parse(message.body)
+            if (data.cmd === 'videoFaceDetectProgress') {
+              const entry = data.id
+                ? videoFacePendingRef.current.get(data.id)
+                : null
+              if (entry && entry.onProgress) {
+                entry.onProgress({
+                  current: Number(data.current) || 0,
+                  total: Number(data.total) || 0,
+                })
+              }
+              return
+            }
+            if (data.cmd === 'videoFaceDetectReturn') {
+              let matched = false
+              const entry = data.id
+                ? videoFacePendingRef.current.get(data.id)
+                : null
+              if (entry) {
+                matched = true
+                videoFacePendingRef.current.delete(data.id)
+                if (data.result === 'ok') {
+                  entry.resolve({
+                    ok: true,
+                    id: data.id,
+                    url: data.url || '',
+                    knowns: toArray(data.knowns),
+                    strangers: toArray(data.strangers),
+                  })
+                } else {
+                  entry.resolve({
+                    ok: false,
+                    id: data.id,
+                    detail: data.detail || data.message || '视频人脸处理失败',
+                  })
+                }
+              }
+              if (!matched && data.result === 'failed') {
+                videoFacePendingRef.current.forEach((p) =>
+                  p.resolve({
+                    ok: false,
+                    detail: data.detail || data.message || '视频人脸处理失败',
+                  }),
+                )
+                videoFacePendingRef.current.clear()
+              }
+              return
             }
             if (data.cmd === 'faceCapture') {
               setFaceCaptures((prev) =>
@@ -384,9 +453,9 @@ export function useMqtt() {
       const payload = JSON.stringify({
         cmd: run ? 'faceCaptureStart' : 'faceCaptureStop',
       })
-      console.log('[MQTT] sending:', payload, 'to', FACE_TOPIC)
+      console.log('[MQTT] sending:', payload, 'to', FACE_CAPTURE_TOPIC)
       client.publish({
-        destination: FACE_TOPIC,
+        destination: FACE_CAPTURE_TOPIC,
         body: payload,
         headers: { 'content-type': 'application/json' },
       })
@@ -398,6 +467,35 @@ export function useMqtt() {
 
   const clearFaceCaptures = useCallback(() => {
     setFaceCaptures([])
+  }, [])
+
+  const sendVideoFaceDetect = useCallback((url, onProgress) => {
+    const client = clientRef.current
+    if (!(client && client.connected)) {
+      return Promise.reject(new Error('MQTT 未连接'))
+    }
+    const id = `meng_vfd_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`
+    const payload = JSON.stringify({ cmd: 'videoFaceDetect', id, url })
+    console.log('[MQTT] sending:', payload, 'to', FACE_CAPTURE_TOPIC)
+    client.publish({
+      destination: FACE_CAPTURE_TOPIC,
+      body: payload,
+      headers: { 'content-type': 'application/json' },
+    })
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => {
+        videoFacePendingRef.current.delete(id)
+        resolve({ ok: false, id, detail: '视频处理超时，请重试' })
+      }, VIDEO_FACE_DETECT_TIMEOUT)
+      videoFacePendingRef.current.set(id, {
+        resolve: (res) => {
+          clearTimeout(timer)
+          videoFacePendingRef.current.delete(id)
+          resolve(res)
+        },
+        onProgress,
+      })
+    })
   }, [])
 
   return {
@@ -419,6 +517,7 @@ export function useMqtt() {
     sendJumpToDevice,
     sendQueryRecord,
     sendFaceCapture,
+    sendVideoFaceDetect,
     clearRecordQuery,
     clearFaceRecords,
     clearFaceCaptures,

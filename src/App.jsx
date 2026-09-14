@@ -4,6 +4,7 @@ import SettingsPanel from './components/SettingsPanel'
 import DetailModal from './components/DetailModal'
 import PlaybackModal from './components/PlaybackModal'
 import FaceCaptureModal from './components/FaceCaptureModal'
+import VideoFaceModal from './components/VideoFaceModal'
 import { useMqtt } from './hooks/useMqtt'
 import { DETAIL_CONFIG } from './config'
 import './App.css'
@@ -27,6 +28,7 @@ function App() {
     sendJumpToDevice,
     sendQueryRecord,
     sendFaceCapture,
+    sendVideoFaceDetect,
     clearRecordQuery,
     clearFaceRecords,
     clearFaceCaptures,
@@ -36,6 +38,7 @@ function App() {
   const [aiActive, setAiActive] = useState(false)
   const [playbackDevice, setPlaybackDevice] = useState(null)
   const [faceCaptureOpen, setFaceCaptureOpen] = useState(false)
+  const [videoFaceOpen, setVideoFaceOpen] = useState(false)
   const timerRef = useRef(null)
   const detailTimerRef = useRef(null)
   const bootRef = useRef(false)
@@ -155,6 +158,12 @@ function App() {
         <div className="header-info">
           <button
             className="face-capture-btn"
+            onClick={() => setVideoFaceOpen(true)}
+          >
+            视频人脸处理
+          </button>
+          <button
+            className="face-capture-btn"
             onClick={() => {
               clearFaceCaptures()
               setFaceCaptureOpen(true)
@@ -200,6 +209,13 @@ function App() {
           captures={faceCaptures}
           onClear={clearFaceCaptures}
           onClose={() => setFaceCaptureOpen(false)}
+        />
+      )}
+
+      {videoFaceOpen && (
+        <VideoFaceModal
+          sendVideoFaceDetect={sendVideoFaceDetect}
+          onClose={() => setVideoFaceOpen(false)}
         />
       )}
 
